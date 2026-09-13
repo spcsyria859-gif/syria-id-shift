@@ -19,7 +19,27 @@ const DISCORD_CALLBACK_URL = 'https://syria-id-shift.onrender.com/auth/discord/c
 const DISCORD_WEBHOOK_URL = 'https://discord.com/api/webhooks/1548726228939186298/6GsN9BeU4QvNtu8sAi57By0olzosy4em';
 
 app.get('/admin', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+    res.send(`
+        <!DOCTYPE html>
+        <html lang="ar" dir="rtl">
+        <head>
+            <meta charset="UTF-8">
+            <title>لوحة تحكم الإدارة - SYRIA ID</title>
+            <style>
+                body { font-family: Arial, sans-serif; background: #0a0f0d; color: #fff; text-align: center; padding: 40px; }
+                h1 { color: #2e7d32; }
+                table { width: 100%; margin-top: 20px; border-collapse: collapse; background: #121e17; }
+                th, td { border: 1px solid #2e7d32; padding: 12px; text-align: center; }
+                th { background: #1b5e20; }
+            </style>
+        </head>
+        <body>
+            <h1>لوحة تحكم الإدارة - سجلات الشفتات</h1>
+            <p>تم تفعيل لوحة التحكم بنجاح! جاري جلب السجلات...</p>
+            <div id="logsContainer">قريباً عرض سجلات الأسابيع هنا.</div>
+        </body>
+        </html>
+    `);
 });
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

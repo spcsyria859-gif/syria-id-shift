@@ -14,9 +14,10 @@ const db = new Database('admin_shifts.db');
 // ⚠️ ضع معلومات الديسكورد الخاصة بك هنا
 // ==========================================
 const DISCORD_CLIENT_ID = '1548725091272233020';
-const DISCORD_CLIENT_SECRET = '6k3djA3UnqoJZEVOE1s1Kl6IDhuXd4LC';
-const DISCORD_CALLBACK_URL = 'DISCORD_CALLBACK_URL = 'https://syria-id-tracker.onrender.com/auth/discord/callback'';
-const DISCORD_WEBHOOK_URL = 'https://discord.com/api/webhooks/1548726228939186298/6GsN9BeU4QvNtu8sAi57By0olzosy4emFKjoSMAEYXn9h0rBh6Ub1FbKuIDOcArpBTdo'; // اتركه أو ضع رابط الـ Webhook الحقيقي
+const DISCORD_CLIENT_SECRET = '6k3djA3UnqoJZEVOE1s1K16IDhuXd4LC';
+const DISCORD_CALLBACK_URL = 'https://syria-id-shift.onrender.com/auth/discord/callback';
+const DISCORD_WEBHOOK_URL = 'https://discord.com/api/webhooks/1548726228939186298/6GsN9BeU4QvNtu8sAi57By0olzosy4em';
+
 app.get('/admin', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });

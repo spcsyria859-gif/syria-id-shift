@@ -1,5 +1,6 @@
 const express = require('express');
-const Database = require('better-sqlite3');
+const sqlite3 = require('sqlite3').verbose();
+const db = new sqlite3.Database('admin_shifts.db');
 const path = require('path');
 const session = require('express-session');
 const passport = require('passport');

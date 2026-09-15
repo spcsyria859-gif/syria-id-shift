@@ -18,7 +18,7 @@ mongoose.connect(MONGO_URI)
 // تعريف هيكل السجلات (Schema)
 const logSchema = new mongoose.Schema({
     username: { type: String, required: true },
-    login_time: { type: Date, default: Date.now },
+    login_time: { type: Date, default: () => new Date(Date.now() + 3 * 60 * 60 * 1000) },
     logout_time: { type: Date, default: null },
     duration_minutes: { type: Number, default: null }
 });
@@ -35,7 +35,7 @@ const REDIRECT_URI = 'https://syria-id-shift-2.onrender.com/auth/discord/callbac
 // رابط الويب هوك الخاص بديسكورد لإرسال الإشعارات
 const DISCORD_WEBHOOK_URL = 'https://discord.com/api/webhooks/1549029236923310112/kmg-3x74fAAGLIubiLRXeJ1JDV8JVFL_TOSSv76--LL-MQjDqS75jpdoBOUclWtlFFpi';
 
-// قائمة الأيديات المسموح لها بالدخول حصراً (محدثة)
+// قائمة الأيديات المسموح لها بالدخول حصراً
 const ALLOWED_ADMIN_IDS = [
     '883828506713272331',
     '1435672093550444670',
@@ -73,11 +73,18 @@ app.use(session({
     saveUninitialized: false
 }));
 
+// دالة للحصول على الوقت المحلي (إضافة 3 ساعات على وقت السيرفر UTC)
+function getLocalTime(dateInput = new Date()) {
+    const date = new Date(dateInput);
+    // إذا كان الوقت مخزناً مسبقاً، نضيف 3 ساعات لتعويض فرق توقيت السيرفر
+    return new Date(date.getTime() + (3 * 60 * 60 * 1000));
+}
+
 // دالة مساعدة لتنسيق التاريخ والوقت بالأرقام الإنجليزية
 function formatLocalDateTime(dateString) {
     if (!dateString) return 'Active now';
-    const date = new Date(dateString);
-    return date.toLocaleString('en-US', {
+    const localDate = getLocalTime(dateString);
+    return localDate.toLocaleString('en-US', {
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
@@ -143,12 +150,14 @@ app.get('/auth/discord/callback', async (req, res) => {
         req.session.username = username;
         req.session.avatar = avatarUrl;
 
-        const loginTime = new Date();
+        const loginTime = new Date(); // الوقت الحالي للسيرفر
+        const formattedLoginForDiscord = formatLocalDateTime(loginTime);
+
         const newLog = new Log({ username, login_time: loginTime });
         await newLog.save();
         req.session.logId = newLog._id;
 
-        await sendDiscordNotification(`🟢 **تم تسجيل دخول إداري**\n👤 الإداري: **${username}**\n⏰ الوقت: ${loginTime.toLocaleString('en-US')}`);
+        await sendDiscordNotification(`🟢 **تم تسجيل دخول إداري**\n👤 الإداري: **${username}**\n⏰ الوقت: ${formattedLoginForDiscord}`);
 
         res.redirect('/success');
     } catch (error) {
@@ -246,6 +255,7 @@ app.get('/logout', async (req, res) => {
     const username = req.session.username;
     if (req.session.logId) {
         const logoutTime = new Date();
+        const formattedLogoutForDiscord = formatLocalDateTime(logoutTime);
         try {
             const logRecord = await Log.findById(req.session.logId);
             if (logRecord) {
@@ -258,7 +268,7 @@ app.get('/logout', async (req, res) => {
                 logRecord.duration_minutes = diffMins;
                 await logRecord.save();
 
-                await sendDiscordNotification(`🔴 **انتهاء شفت إداري**\n👤 الإداري: **${username}**\n⏱️ مدة التواجد: **${diffMins} دقيقة** (≈ ${hoursCount} ساعة)\n⏰ وقت الخروج: ${logoutTime.toLocaleString('en-US')}`);
+                await sendDiscordNotification(`🔴 **انتهاء شفت إداري**\n👤 الإداري: **${username}**\n⏱️ مدة التواجد: **${diffMins} دقيقة** (≈ ${hoursCount} ساعة)\n⏰ وقت الخروج: ${formattedLogoutForDiscord}`);
             }
         } catch (error) {
             console.error('خطأ أثناء تسجيل الخروج:', error);
@@ -275,11 +285,11 @@ app.get('/admin-control', async (req, res) => {
         const rawLogs = await Log.find().sort({ _id: -1 }).lean();
         
         const formattedLogs = rawLogs.map(log => {
-            const loginDate = new Date(log.login_time);
+            const localLoginDate = getLocalTime(log.login_time);
             
-            const startOfYear = new Date(loginDate.getFullYear(), 0, 1);
-            const weekNumber = Math.ceil(((loginDate - startOfYear) / 86400000 + startOfYear.getDay() + 1) / 7);
-            const weekKey = `Week ${weekNumber}, ${loginDate.getFullYear()}`;
+            const startOfYear = new Date(localLoginDate.getFullYear(), 0, 1);
+            const weekNumber = Math.ceil(((localLoginDate - startOfYear) / 86400000 + startOfYear.getDay() + 1) / 7);
+            const weekKey = `Week ${weekNumber}, ${localLoginDate.getFullYear()}`;
 
             return {
                 ...log,

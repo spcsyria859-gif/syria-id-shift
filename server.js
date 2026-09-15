@@ -32,8 +32,11 @@ const CLIENT_ID = '1548725091272233020';
 const CLIENT_SECRET = 'tBqSo-ZAGWUpV4ikMHu2IdkxWUF7gQxh';
 const REDIRECT_URI = 'https://syria-id-shift-2.onrender.com/auth/discord/callback';
 
-// رابط الويب هوك الخاص بديسكورد لإرسال الإشعارات
+// 1. رابط الويب هوك الخاص بروم تسجيل الدخول والخروج (الشفتات)
 const DISCORD_WEBHOOK_URL = 'https://discord.com/api/webhooks/1549029236923310112/kmg-3x74fAAGLIubiLRXeJ1JDV8JVFL_TOSSv76--LL-MQjDqS75jpdoBOUclWtlFFpi';
+
+// 2. رابط الويب هوك الخاص بروم محاولات الدخول المرفوضة (المخصص الجديد)
+const UNAUTHORIZED_WEBHOOK_URL = 'https://discord.com/api/webhooks/1549501046659743794/ftjx7Fmp6iQL_rwEw9r19pUUW980_naDvLgSaU512gXk71ATV-w4fFnj52fjp8GdnZYs';
 
 // قائمة الأيديات المسموح لها بالدخول حصراً
 const ALLOWED_ADMIN_IDS = [
@@ -50,13 +53,23 @@ const ALLOWED_ADMIN_IDS = [
     '1363243483250430032'
 ];
 
-// دالة لإرسال الإشعارات إلى ديسكورد
+// دالة لإرسال الإشعارات إلى ديسكورد (الشفتات)
 async function sendDiscordNotification(message) {
     if (DISCORD_WEBHOOK_URL.includes('ضع_رابط_الويب_هوك')) return;
     try {
         await axios.post(DISCORD_WEBHOOK_URL, { content: message });
     } catch (error) {
         console.error('خطأ في إرسال إشعار ديسكورد:', error);
+    }
+}
+
+// دالة لإرسال إشعارات محاولات الدخول المرفوضة إلى الروم المخصصة
+async function sendUnauthorizedNotification(message) {
+    if (!UNAUTHORIZED_WEBHOOK_URL || UNAUTHORIZED_WEBHOOK_URL.includes('ضع_رابط')) return;
+    try {
+        await axios.post(UNAUTHORIZED_WEBHOOK_URL, { content: message });
+    } catch (error) {
+        console.error('خطأ في إرسال إشعار محاولة الدخول المرفوضة:', error);
     }
 }
 
@@ -76,7 +89,6 @@ app.use(session({
 // دالة للحصول على الوقت المحلي (إضافة 3 ساعات على وقت السيرفر UTC)
 function getLocalTime(dateInput = new Date()) {
     const date = new Date(dateInput);
-    // إذا كان الوقت مخزناً مسبقاً، نضيف 3 ساعات لتعويض فرق توقيت السيرفر
     return new Date(date.getTime() + (3 * 60 * 60 * 1000));
 }
 
@@ -131,7 +143,7 @@ app.get('/auth/discord/callback', async (req, res) => {
 
         // التحقق من أن المستخدم ضمن الأيديات المسموح لها
         if (ALLOWED_ADMIN_IDS.length > 0 && !ALLOWED_ADMIN_IDS.includes(discordUser.id)) {
-            await sendDiscordNotification(`⚠️ **محاولة دخول مرفوضة**\n👤 المستخدم: **${discordUser.global_name || discordUser.username}** (ID: ${discordUser.id}) حاول الدخول وهو غير مصرح له.`);
+            await sendUnauthorizedNotification(`⚠️ **محاولة دخول مرفوضة**\n👤 المستخدم: **${discordUser.global_name || discordUser.username}** (ID: ${discordUser.id}) حاول الدخول وهو غير مصرح له.`);
             return res.send(`
                 <html dir="rtl" style="font-family: Tahoma; text-align: center; padding-top: 50px; background: #1a1a1a; color: white;">
                     <h2 style="color: #ff6b6b;">عذراً، لست مصرحاً لك بتسجيل الدخول كإداري!</h2>
@@ -150,7 +162,7 @@ app.get('/auth/discord/callback', async (req, res) => {
         req.session.username = username;
         req.session.avatar = avatarUrl;
 
-        const loginTime = new Date(); // الوقت الحالي للسيرفر
+        const loginTime = new Date();
         const formattedLoginForDiscord = formatLocalDateTime(loginTime);
 
         const newLog = new Log({ username, login_time: loginTime });
@@ -293,7 +305,7 @@ app.get('/admin-control', async (req, res) => {
 
             return {
                 ...log,
-                weekKey,
+            weekKey,
                 formatted_login: formatLocalDateTime(log.login_time),
                 formatted_logout: formatLocalDateTime(log.logout_time),
                 duration_text: (log.duration_minutes !== null && log.duration_minutes !== undefined) 

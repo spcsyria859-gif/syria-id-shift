@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>لوحة مراقبة نشاط الإداريين</title>
+    <style>
+        body {
+            font-family: Tahoma, sans-serif;
+            background-color: #0f2c27;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+        .container {
+            max-width: 1100px;
+            margin: auto;
+            background: #edebe0;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            border-top: 5px solid #0f766e;
+        }
+        h2 {
+            text-align: center;
+            color: #0f766e;
+            margin-bottom: 25px;
+        }
+        .week-section {
+            margin-bottom: 40px;
+        }
+        .section-title {
+            font-size: 18px;
+            color: #fff;
+            background-color: #0f766e;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-weight: bold;
+            display: inline-block;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #ffffff;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+        }
+        th, td {
+            padding: 12px 15px;
+            text-align: center;
+            font-size: 14px;
+        }
+        th {
+            background-color: #134e4a;
+            color: white;
+            font-weight: bold;
+        }
+        tr:nth-child(even) {
+            background-color: #f8f7f0;
+        }
+        tr:hover {
+            background-color: #f1ede1;
+        }
+        .badge-active {
+            background-color: #2e7d32;
+            color: white;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+        }
+        .badge-finished {
+            background-color: #555;
+            color: white;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+        }
+        .no-data {
+            text-align: center;
+            padding: 20px;
+            background: #ffffff;
+            border-radius: 8px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>لوحة مراقبة نشاط الإداريين</h2>
+
+        <% if (Object.keys(groupedByWeek).length > 0) { %>
+            <% Object.keys(groupedByWeek).forEach(weekKey => { %>
+                <div class="week-section">
+                    <div class="section-title">📅 <span><%= weekKey %></span></div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>اسم الإداري</th>
+                                <th>وقت تسجيل الدخول</th>
+                                <th>وقت تسجيل الخروج</th>
+                                <th>مدة الشفت</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <% groupedByWeek[weekKey].forEach((log, index) => { %>
+                                <tr>
+                                    <td><%= index + 1 %></td>
+                                    <td><strong><%= log.username %></strong></td>
+                                    <td style="color: #0f766e; font-weight: bold;"><%= log.formatted_login %></td>
+                                    <td style="color: #c9302c; font-weight: bold;"><%= log.formatted_logout %></td>
+                                    <td>
+                                        <% if (!log.logout_time) { %>
+                                            <span class="badge-active">نشط الآن</span>
+                                        <% } else { %>
+                                            <span class="badge-finished"><%= log.duration_text %></span>
+                                        <% } %>
+                                    </td>
+                                </tr>
+                            <% }) %>
+                        </tbody>
+                    </table>
+                </div>
+            <% }) %>
+        <% } else { %>
+            <div class="no-data">لا توجد سجلات نشاط حتى الآن</div>
+        <% } %>
+
+    </div>
+
+</body>
+</html>

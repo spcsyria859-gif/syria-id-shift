@@ -35,6 +35,20 @@ const REDIRECT_URI = 'https://syria-id-shift-2.onrender.com/auth/discord/callbac
 // رابط الويب هوك الخاص بديسكورد لإرسال الإشعارات
 const DISCORD_WEBHOOK_URL = 'https://discord.com/api/webhooks/1549029236923310112/kmg-3x74fAAGLIubiLRXeJ1JDV8JVFL_TOSSv76--LL-MQjDqS75jpdoBOUclWtlFFpi';
 
+// قائمة الأيديات المسموح لها بالدخول حصراً
+const ALLOWED_ADMIN_IDS = [
+    '883828506713272331',
+    '1435672093550444670',
+    '1118195222812295288',
+    '1469812869670502652',
+    '725736703301779507',
+    '1449113159599259672',
+    '1387525708917641378',
+    '1088035074655662131',
+    '763710085938806814',
+    '1058522432878673950'
+];
+
 // دالة لإرسال الإشعارات إلى ديسكورد
 async function sendDiscordNotification(message) {
     if (DISCORD_WEBHOOK_URL.includes('ضع_رابط_الويب_هوك')) return;
@@ -106,6 +120,20 @@ app.get('/auth/discord/callback', async (req, res) => {
         });
 
         const discordUser = userResponse.data;
+
+        // التحقق من أن المستخدم ضمن الأيديات المسموح لها
+        if (ALLOWED_ADMIN_IDS.length > 0 && !ALLOWED_ADMIN_IDS.includes(discordUser.id)) {
+            await sendDiscordNotification(`⚠️ **محاولة دخول مرفوضة**\n👤 المستخدم: **${discordUser.global_name || discordUser.username}** (ID: ${discordUser.id}) حاول الدخول وهو غير مصرح له.`);
+            return res.send(`
+                <html dir="rtl" style="font-family: Tahoma; text-align: center; padding-top: 50px; background: #1a1a1a; color: white;">
+                    <h2 style="color: #ff6b6b;">عذراً، لست مصرحاً لك بتسجيل الدخول كإداري!</h2>
+                    <p style="color: #aaa; margin-top: 10px;">هذا النظام مخصص حصراً لإداريي السيرفر المسجلين مسبقاً.</p>
+                    <p style="color: #777; font-size: 12px; margin-top: 20px;">Discord ID الخاص بك: ${discordUser.id}</p>
+                    <br><a href="/login" style="color: #428177; text-decoration: underline;">العودة لصفحة تسجيل الدخول</a>
+                </html>
+            `);
+        }
+
         const username = discordUser.global_name || discordUser.username;
         const avatarUrl = discordUser.avatar 
             ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png` 
@@ -115,7 +143,6 @@ app.get('/auth/discord/callback', async (req, res) => {
         req.session.avatar = avatarUrl;
 
         const loginTime = new Date();
-        // حفظ السجل في MongoDB
         const newLog = new Log({ username, login_time: loginTime });
         await newLog.save();
         req.session.logId = newLog._id;
@@ -241,7 +268,7 @@ app.get('/logout', async (req, res) => {
     });
 });
 
-// لوحة المراقبة (مع تنسيق الأسابيع والأرقام الإنجليزية)
+// لوحة المراقبة
 app.get('/admin-control', async (req, res) => {
     try {
         const rawLogs = await Log.find().sort({ _id: -1 }).lean();

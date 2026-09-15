@@ -30,7 +30,7 @@ const Log = mongoose.model('Log', logSchema);
 // ==========================================
 const CLIENT_ID = '1548725091272233020';
 const CLIENT_SECRET = 'tBqSo-ZAGWUpV4ikMHu2IdkxWUF7gQxh';
-const REDIRECT_URI = 'http://localhost:3000/auth/discord/callback';
+const REDIRECT_URI = 'https://syria-id-shift-2.onrender.com/auth/discord/callback';
 
 // رابط الويب هوك الخاص بديسكورد لإرسال الإشعارات
 const DISCORD_WEBHOOK_URL = 'https://discord.com/api/webhooks/1549029236923310112/kmg-3x74fAAGLIubiLRXeJ1JDV8JVFL_TOSSv76--LL-MQjDqS75jpdoBOUclWtlFFpi';

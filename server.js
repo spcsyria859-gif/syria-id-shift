@@ -35,7 +35,7 @@ const REDIRECT_URI = 'https://syria-id-shift-2.onrender.com/auth/discord/callbac
 // رابط الويب هوك الخاص بديسكورد لإرسال الإشعارات
 const DISCORD_WEBHOOK_URL = 'https://discord.com/api/webhooks/1549029236923310112/kmg-3x74fAAGLIubiLRXeJ1JDV8JVFL_TOSSv76--LL-MQjDqS75jpdoBOUclWtlFFpi';
 
-// قائمة الأيديات المسموح لها بالدخول حصراً
+// قائمة الأيديات المسموح لها بالدخول حصراً (محدثة)
 const ALLOWED_ADMIN_IDS = [
     '883828506713272331',
     '1435672093550444670',
@@ -46,7 +46,8 @@ const ALLOWED_ADMIN_IDS = [
     '1387525708917641378',
     '1088035074655662131',
     '763710085938806814',
-    '1058522432878673950'
+    '1058522432878673950',
+    '1363243483250430032'
 ];
 
 // دالة لإرسال الإشعارات إلى ديسكورد

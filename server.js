@@ -1,5 +1,6 @@
 const express = require('express');
 const session = require('express-session');
+const MongoStore = require('connect-mongo');
 const mongoose = require('mongoose');
 const path = require('path');
 const axios = require('axios');
@@ -81,10 +82,18 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// حفظ الجلسات داخل قاعدة بيانات MongoDB لتفادي ضياعها عند سبات السيرفر
 app.use(session({
     secret: 'admin-tracker-secret-key',
     resave: false,
-    saveUninitialized: false
+    saveUninitialized: false,
+    store: MongoStore.create({
+        mongoUrl: MONGO_URI,
+        collectionName: 'sessions'
+    }),
+    cookie: {
+        maxAge: 24 * 60 * 60 * 1000 // الجلسة تبقى صالحة لمدة 24 ساعة
+    }
 }));
 
 // دالة للحصول على الوقت المحلي (إضافة 3 ساعات على وقت السيرفر UTC)
@@ -160,6 +169,12 @@ app.get('/auth/discord/callback', async (req, res) => {
             ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png` 
             : 'https://cdn.discordapp.com/embed/avatars/0.png';
 
+        // إغلاق أي شفت قديم مفتوح مسبقاً لهذا المستخدم تفادياً لتداخل السجلات
+        await Log.updateMany(
+            { discord_id: discordUser.id, logout_time: null },
+            { $set: { logout_time: new Date(), duration_minutes: 1 } }
+        );
+
         req.session.username = username;
         req.session.avatar = avatarUrl;
         req.session.discordId = discordUser.id;
@@ -171,7 +186,6 @@ app.get('/auth/discord/callback', async (req, res) => {
         const newLog = new Log({ username, discord_id: discordUser.id, login_time: loginTime });
         await newLog.save();
         
-        // تخزين معرف السجل في الجلسة بوضوح
         req.session.logId = newLog._id.toString();
 
         await sendDiscordNotification(`🟢 **تم تسجيل دخول إداري**\n👤 الإداري: **${username}**\n⏰ الوقت: ${formattedLoginForDiscord}`);
@@ -185,20 +199,28 @@ app.get('/auth/discord/callback', async (req, res) => {
 
 // صفحة الشفت النشط
 app.get('/success', async (req, res) => {
-    if (!req.session.username || !req.session.logId) return res.redirect('/login');
+    if (!req.session.username || !req.session.discordId) return res.redirect('/login');
     
-    let initialSeconds = 0;
+    let logRecord = null;
     try {
-        const logRecord = await Log.findById(req.session.logId);
-        if (logRecord && !logRecord.logout_time) {
-            const loginTimeMs = new Date(logRecord.login_time).getTime();
-            initialSeconds = Math.max(0, Math.floor((Date.now() - loginTimeMs) / 1000));
-        } else {
-            return res.redirect('/login');
+        if (req.session.logId) {
+            logRecord = await Log.findById(req.session.logId);
+        }
+        // احتياطي: إذا ضاع المعرّف، نبحث عن أحدث شفت مفتوح لهذا المستخدم
+        if (!logRecord || logRecord.logout_time) {
+            logRecord = await Log.findOne({ discord_id: req.session.discordId, logout_time: null }).sort({ login_time: -1 });
+            if (logRecord) {
+                req.session.logId = logRecord._id.toString();
+            } else {
+                return res.redirect('/login');
+            }
         }
     } catch (e) {
         return res.redirect('/login');
     }
+
+    const loginTimeMs = new Date(logRecord.login_time).getTime();
+    const initialSeconds = Math.max(0, Math.floor((Date.now() - loginTimeMs) / 1000));
 
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     res.setHeader('Pragma', 'no-cache');
@@ -284,26 +306,34 @@ app.get('/success', async (req, res) => {
 // تسجيل الخروج
 app.get('/logout', async (req, res) => {
     const username = req.session.username;
-    if (req.session.logId) {
-        try {
-            const logRecord = await Log.findById(req.session.logId);
-            if (logRecord && !logRecord.logout_time) {
-                const logoutTime = new Date();
-                const formattedLogoutForDiscord = formatLocalDateTime(logoutTime);
-                const loginTime = new Date(logRecord.login_time);
-                const diffMs = logoutTime - loginTime;
-                const diffMins = Math.floor(diffMs / 60000);
-                const hoursCount = (diffMins / 60).toFixed(1);
+    const discordId = req.session.discordId;
+    let logRecord = null;
 
-                logRecord.logout_time = logoutTime;
-                logRecord.duration_minutes = diffMins > 0 ? diffMins : 1;
-                await logRecord.save();
-
-                await sendDiscordNotification(`🔴 **انتهاء شفت إداري**\n👤 الإداري: **${username || logRecord.username}**\n⏱️ مدة التواجد: **${logRecord.duration_minutes} دقيقة** (≈ ${hoursCount} ساعة)\n⏰ وقت الخروج: ${formattedLogoutForDiscord}`);
-            }
-        } catch (error) {
-            console.error('خطأ أثناء تسجيل الخروج:', error);
+    try {
+        if (req.session.logId) {
+            logRecord = await Log.findById(req.session.logId);
         }
+        // احتياطي دقيق: إذا لم يتم العثور على السجل عبر الجلسة، نبحث عنه عبر الـ discordId مباشرة
+        if (!logRecord && discordId) {
+            logRecord = await Log.findOne({ discord_id: discordId, logout_time: null }).sort({ login_time: -1 });
+        }
+
+        if (logRecord && !logRecord.logout_time) {
+            const logoutTime = new Date();
+            const formattedLogoutForDiscord = formatLocalDateTime(logoutTime);
+            const loginTime = new Date(logRecord.login_time);
+            const diffMs = logoutTime - loginTime;
+            const diffMins = Math.floor(diffMs / 60000);
+            const hoursCount = (diffMins / 60).toFixed(1);
+
+            logRecord.logout_time = logoutTime;
+            logRecord.duration_minutes = diffMins > 0 ? diffMins : 1;
+            await logRecord.save();
+
+            await sendDiscordNotification(`🔴 **انتهاء شفت إداري**\n👤 الإداري: **${username || logRecord.username}**\n⏱️ مدة التواجد: **${logRecord.duration_minutes} دقيقة** (≈ ${hoursCount} ساعة)\n⏰ وقت الخروج: ${formattedLogoutForDiscord}`);
+        }
+    } catch (error) {
+        console.error('خطأ أثناء تسجيل الخروج:', error);
     }
 
     req.session.destroy(() => {

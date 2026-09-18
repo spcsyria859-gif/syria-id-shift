@@ -18,6 +18,7 @@ mongoose.connect(MONGO_URI)
 // تعريف هيكل السجلات (Schema)
 const logSchema = new mongoose.Schema({
     username: { type: String, required: true },
+    discord_id: { type: String, required: true },
     login_time: { type: Date, default: () => new Date(Date.now() + 3 * 60 * 60 * 1000) },
     logout_time: { type: Date, default: null },
     duration_minutes: { type: Number, default: null }
@@ -35,7 +36,7 @@ const REDIRECT_URI = 'https://syria-id-shift-2.onrender.com/auth/discord/callbac
 // 1. رابط الويب هوك الخاص بروم تسجيل الدخول والخروج (الشفتات)
 const DISCORD_WEBHOOK_URL = 'https://discord.com/api/webhooks/1549029236923310112/kmg-3x74fAAGLIubiLRXeJ1JDV8JVFL_TOSSv76--LL-MQjDqS75jpdoBOUclWtlFFpi';
 
-// 2. رابط الويب هوك الخاص بروم محاولات الدخول المرفوضة (المخصص الجديد)
+// 2. رابط الويب هوك الخاص بروم محاولات الدخول المرفوضة
 const UNAUTHORIZED_WEBHOOK_URL = 'https://discord.com/api/webhooks/1549501046659743794/ftjx7Fmp6iQL_rwEw9r19pUUW980_naDvLgSaU512gXk71ATV-w4fFnj52fjp8GdnZYs';
 
 // قائمة الأيديات المسموح لها بالدخول حصراً
@@ -159,13 +160,27 @@ app.get('/auth/discord/callback', async (req, res) => {
             ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png` 
             : 'https://cdn.discordapp.com/embed/avatars/0.png';
 
+        // التحقق مما إذا كان هناك شفت قديم لنفس الإداري لم يتم إغلاقه (لم يقم بتسجيل الخروج بسب انطفاء السيرفر)
+        const activeLog = await Log.findOne({ discord_id: discordUser.id, logout_time: null });
+        if (activeLog) {
+            // إغلاق الشفت القديم تلقائياً لتفادي تداخل السجلات
+            const autoLogoutTime = new Date();
+            const diffMs = autoLogoutTime - new Date(activeLog.login_time);
+            const diffMins = Math.floor(diffMs / 60000);
+            
+            activeLog.logout_time = autoLogoutTime;
+            activeLog.duration_minutes = diffMins > 0 ? diffMins : 1;
+            await activeLog.save();
+        }
+
         req.session.username = username;
         req.session.avatar = avatarUrl;
+        req.session.discordId = discordUser.id;
 
         const loginTime = new Date();
         const formattedLoginForDiscord = formatLocalDateTime(loginTime);
 
-        const newLog = new Log({ username, login_time: loginTime });
+        const newLog = new Log({ username, discord_id: discordUser.id, login_time: loginTime });
         await newLog.save();
         req.session.logId = newLog._id;
 
@@ -179,9 +194,29 @@ app.get('/auth/discord/callback', async (req, res) => {
 });
 
 // صفحة الشفت النشط
-app.get('/success', (req, res) => {
-    if (!req.session.username) return res.redirect('/login');
+app.get('/success', async (req, res) => {
+    if (!req.session.username || !req.session.discordId) return res.redirect('/login');
     
+    // التأكد من وجود سجل نشط في قاعدة البيانات حتى لو حصل إعادة تشغيل للسيرفر
+    let logRecord = null;
+    if (req.session.logId) {
+        logRecord = await Log.findById(req.session.logId);
+    }
+    if (!logRecord || logRecord.logout_time !== null) {
+        // إذا ضاع السجل بسبب سبات Render، نبحث عن آخر شفت نشط لهذا المستخدم أو ننشئ له سجلاً جديداً
+        logRecord = await Log.findOne({ discord_id: req.session.discordId, logout_time: null });
+        if (!logRecord) {
+            logRecord = new Log({ username: req.session.username, discord_id: req.session.discordId, login_time: new Date() });
+            await logRecord.save();
+        }
+        req.session.logId = logRecord._id;
+    }
+
+    // حساب المدة المنقضية بدقة من قاعدة البيانات
+    const loginTimeMs = new Date(logRecord.login_time).getTime();
+    const currentTimeMs = Date.now();
+    const initialSeconds = Math.max(0, Math.floor((currentTimeMs - loginTimeMs) / 1000));
+
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
@@ -246,7 +281,7 @@ app.get('/success', (req, res) => {
                 <a href="/logout" class="logout-btn">تسجيل خروج</a>
             </div>
             <script>
-                let totalSeconds = 0;
+                let totalSeconds = ${initialSeconds};
                 const timerElement = document.getElementById('timer');
                 function updateTimer() {
                     totalSeconds++;
@@ -255,6 +290,7 @@ app.get('/success', (req, res) => {
                     let s = totalSeconds % 60;
                     timerElement.textContent = (h < 10 ? '0' + h : h) + ':' + (m < 10 ? '0' + m : m) + ':' + (s < 10 ? '0' + s : s);
                 }
+                updateTimer();
                 setInterval(updateTimer, 1000);
             </script>
         </body>
@@ -265,27 +301,35 @@ app.get('/success', (req, res) => {
 // تسجيل الخروج
 app.get('/logout', async (req, res) => {
     const username = req.session.username;
+    let logRecord = null;
+
     if (req.session.logId) {
+        logRecord = await Log.findById(req.session.logId);
+    }
+    // إذا ضاع الـ logId بسبب سبات السيرفر، نبحث عنه عبر الـ discordId
+    if (!logRecord && req.session.discordId) {
+        logRecord = await Log.findOne({ discord_id: req.session.discordId, logout_time: null });
+    }
+
+    if (logRecord) {
         const logoutTime = new Date();
         const formattedLogoutForDiscord = formatLocalDateTime(logoutTime);
         try {
-            const logRecord = await Log.findById(req.session.logId);
-            if (logRecord) {
-                const loginTime = new Date(logRecord.login_time);
-                const diffMs = logoutTime - loginTime;
-                const diffMins = Math.floor(diffMs / 60000);
-                const hoursCount = (diffMins / 60).toFixed(1);
+            const loginTime = new Date(logRecord.login_time);
+            const diffMs = logoutTime - loginTime;
+            const diffMins = Math.floor(diffMs / 60000);
+            const hoursCount = (diffMins / 60).toFixed(1);
 
-                logRecord.logout_time = logoutTime;
-                logRecord.duration_minutes = diffMins;
-                await logRecord.save();
+            logRecord.logout_time = logoutTime;
+            logRecord.duration_minutes = diffMins > 0 ? diffMins : 1;
+            await logRecord.save();
 
-                await sendDiscordNotification(`🔴 **انتهاء شفت إداري**\n👤 الإداري: **${username}**\n⏱️ مدة التواجد: **${diffMins} دقيقة** (≈ ${hoursCount} ساعة)\n⏰ وقت الخروج: ${formattedLogoutForDiscord}`);
-            }
+            await sendDiscordNotification(`🔴 **انتهاء شفت إداري**\n👤 الإداري: **${username || logRecord.username}**\n⏱️ مدة التواجد: **${logRecord.duration_minutes} دقيقة** (≈ ${hoursCount} ساعة)\n⏰ وقت الخروج: ${formattedLogoutForDiscord}`);
         } catch (error) {
             console.error('خطأ أثناء تسجيل الخروج:', error);
         }
     }
+
     req.session.destroy(() => {
         res.redirect('/login');
     });
@@ -305,7 +349,7 @@ app.get('/admin-control', async (req, res) => {
 
             return {
                 ...log,
-            weekKey,
+                weekKey,
                 formatted_login: formatLocalDateTime(log.login_time),
                 formatted_logout: formatLocalDateTime(log.logout_time),
                 duration_text: (log.duration_minutes !== null && log.duration_minutes !== undefined) 

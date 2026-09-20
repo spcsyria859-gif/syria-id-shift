@@ -52,7 +52,8 @@ const ALLOWED_ADMIN_IDS = [
     '1088035074655662131',
     '763710085938806814',
     '1058522432878673950',
-    '1363243483250430032'
+    '1363243483250430032',
+    '1139561854553817199' // الآيدي الجديد الذي أضفته
 ];
 
 // دالة لإرسال الإشعارات إلى ديسكورد (الشفتات)
@@ -206,7 +207,6 @@ app.get('/success', async (req, res) => {
         if (req.session.logId) {
             logRecord = await Log.findById(req.session.logId);
         }
-        // احتياطي: إذا ضاع المعرّف، نبحث عن أحدث شفت مفتوح لهذا المستخدم
         if (!logRecord || logRecord.logout_time) {
             logRecord = await Log.findOne({ discord_id: req.session.discordId, logout_time: null }).sort({ login_time: -1 });
             if (logRecord) {
@@ -313,7 +313,6 @@ app.get('/logout', async (req, res) => {
         if (req.session.logId) {
             logRecord = await Log.findById(req.session.logId);
         }
-        // احتياطي دقيق: إذا لم يتم العثور على السجل عبر الجلسة، نبحث عنه عبر الـ discordId مباشرة
         if (!logRecord && discordId) {
             logRecord = await Log.findOne({ discord_id: discordId, logout_time: null }).sort({ login_time: -1 });
         }
